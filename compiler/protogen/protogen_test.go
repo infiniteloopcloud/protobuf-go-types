@@ -344,3 +344,38 @@ var _ = bar.X
 		t.Fatalf("content mismatch (-want +got):\n%s", diff)
 	}
 }
+
+func TestUnmarshal(t *testing.T) {
+	req := &pluginpb.CodeGeneratorRequest{}
+	err := proto.Unmarshal(unmarshalIn, req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var msg *descriptorpb.DescriptorProto
+	for _, descriptorProto := range req.GetProtoFile() {
+		if *descriptorProto.Name == "test.proto" {
+			for _, msgTyp := range descriptorProto.MessageType {
+				if *msgTyp.Name == "Test" {
+					msg = msgTyp
+				}
+			}
+		}
+	}
+	if msg == nil {
+		t.Fatal("missing message")
+	}
+	for _, f := range msg.GetField() {
+		extensions := f.Options.GetExtensionFields()
+		if len(extensions) == 0 {
+			continue
+		}
+		if len(extensions) > 3 {
+			t.Error("too many extensions")
+		}
+		if goType, ok := extensions[1001]; ok {
+			if goType.Value().String() == "" {
+				t.Errorf("missing go_type field option, at field %s", *f.Name)
+			}
+		}
+	}
+}

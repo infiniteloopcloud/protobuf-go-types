@@ -20,7 +20,9 @@ import (
 	"github.com/infiniteloopcloud/protoc-gen-go-types/compiler/protogen"
 	"github.com/infiniteloopcloud/protoc-gen-go-types/internal/encoding/tag"
 	"github.com/infiniteloopcloud/protoc-gen-go-types/internal/genid"
+	"github.com/infiniteloopcloud/protoc-gen-go-types/internal/impl"
 	"github.com/infiniteloopcloud/protoc-gen-go-types/internal/version"
+	"github.com/infiniteloopcloud/protoc-gen-go-types/log"
 	"github.com/infiniteloopcloud/protoc-gen-go-types/reflect/protoreflect"
 	"github.com/infiniteloopcloud/protoc-gen-go-types/runtime/protoimpl"
 
@@ -31,10 +33,6 @@ import (
 const (
 	EnvSkipProtobufSpecific = "SKIP_PROTOBUF_SPECIFIC"
 	EnvTypeOverride         = "TYPE_OVERRIDE"
-
-	fieldOptionGoType        = "go_type"
-	fieldOptionGoImport      = "go_import"
-	fieldOptionGoImportAlias = "go_import_alias"
 )
 
 type overrideParams struct {
@@ -52,6 +50,8 @@ var SupportedFeatures = uint64(pluginpb.CodeGeneratorResponse_FEATURE_PROTO3_OPT
 // GenerateVersionMarkers specifies whether to generate version markers.
 var GenerateProtobufSpecific = true
 var TypeOverride = false
+
+var lookupExtensionNames = []string{"go_type", "go_import", "go_import_alias"}
 
 // Standard library dependencies.
 const (
@@ -93,6 +93,8 @@ func GenerateFile(gen *protogen.Plugin, file *protogen.File) *protogen.Generated
 		TypeOverride = true
 	}
 
+	log.Log("GenerateFile>> SkipProtobufSpecific:%v | TypeOverride:%v\n", GenerateProtobufSpecific, TypeOverride)
+
 	filename := file.GeneratedFilenamePrefix + ".pb.go"
 	g := gen.NewGeneratedFile(filename, file.GoImportPath)
 	f := newFileInfo(file)
@@ -119,6 +121,7 @@ func GenerateFile(gen *protogen.Plugin, file *protogen.File) *protogen.Generated
 	for _, message := range f.allMessages {
 		buildOverrides(message)
 	}
+	log.Log("overrides count: %d\t data: %#v", len(overrideFields), overrideFields)
 	genOverrideImports(g)
 	for i, imps := 0, f.Desc.Imports(); i < imps.Len(); i++ {
 		genImport(gen, g, f, imps.Get(i))
@@ -159,22 +162,18 @@ func buildOverrides(message *messageInfo) {
 		return
 	}
 
+	log.Log("processing message: %s", message.Desc.FullName())
+
 	for _, field := range message.Fields {
 		var override overrideParams
-		for _, o := range field.Desc.Options().(*descriptorpb.FieldOptions).GetUninterpretedOption() {
-			for _, namePart := range o.Name {
-				if namePart != nil {
-					switch namePart.GetNamePart() {
-					case fieldOptionGoType:
-						override.goType = string(o.GetStringValue())
-					case fieldOptionGoImport:
-						override.goImport = string(o.GetStringValue())
-					case fieldOptionGoImportAlias:
-						override.goImportAlias = string(o.GetStringValue())
-					}
-				}
-			}
+		log.Log("processing field: %s", field.GoName)
+
+		if uop, uok := processUninterpretedOptions(field); uok {
+			override = uop
+		} else if eop, eok := processExtensions(field); eok {
+			override = eop
 		}
+
 		if override.goType != "" {
 			if _, ok := overrideFields[message.GoIdent.GoName]; !ok {
 				overrideFields[message.GoIdent.GoName] = make(map[string]overrideParams)
@@ -182,6 +181,50 @@ func buildOverrides(message *messageInfo) {
 			overrideFields[message.GoIdent.GoName][field.GoName] = override
 		}
 	}
+}
+
+func processExtensions(field *protogen.Field) (overrideParams, bool) {
+	var override overrideParams
+	var ok bool
+	for _, ex := range field.Desc.Options().(*descriptorpb.FieldOptions).GetExtensionFields() {
+		switch string(ex.Type().TypeDescriptor().FullName()) {
+		case impl.FieldOptionGoType:
+			override.goType = ex.Value().String()
+			ok = true
+		case impl.FieldOptionGoImport:
+			override.goImport = ex.Value().String()
+			ok = true
+		case impl.FieldOptionGoImportAlias:
+			override.goImportAlias = ex.Value().String()
+			ok = true
+		}
+	}
+	return override, ok
+}
+
+func processUninterpretedOptions(field *protogen.Field) (overrideParams, bool) {
+	var override overrideParams
+	var ok bool
+	for _, o := range field.Desc.Options().(*descriptorpb.FieldOptions).GetUninterpretedOption() {
+		for _, namePart := range o.Name {
+			if namePart != nil {
+				log.Log("message field: %s", namePart.GetNamePart())
+				switch namePart.GetNamePart() {
+				case impl.FieldOptionGoType:
+					override.goType = string(o.GetStringValue())
+					ok = true
+				case impl.FieldOptionGoImport:
+					override.goImport = string(o.GetStringValue())
+					ok = true
+				case impl.FieldOptionGoImportAlias:
+					override.goImportAlias = string(o.GetStringValue())
+					ok = true
+				}
+			}
+		}
+	}
+
+	return override, ok
 }
 
 // genStandaloneComments prints all leading comments for a FileDescriptorProto

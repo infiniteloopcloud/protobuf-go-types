@@ -4,10 +4,20 @@ package proto;
 
 option go_package = ".;proto";
 
-import "./test_data/config.proto";
+//import "./test_data/config.proto";
 // to test with other languages, switch to this import and run
-// protoc -I=test_data --java_out=test_data test_data/*.proto
-// import "config.proto";
+// cd cmd/protoc-gen-go/internal_gengo
+// TYPE_OVERRIDE=true DEBUG=true protoc --go_out=test_data -I test_data test_data/test.proto
+import "config.proto";
+
+// Or use the following hard coded field option extension
+//import "google/protobuf/descriptor.proto";
+//
+//extend google.protobuf.FieldOptions {
+//  optional string go_type = 1001;
+//  optional string go_import = 1002;
+//  optional string go_import_alias = 1003;
+//}
 
 message RepeatedString {
 }

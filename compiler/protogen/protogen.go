@@ -30,6 +30,7 @@ import (
 	"github.com/infiniteloopcloud/protoc-gen-go-types/encoding/prototext"
 	"github.com/infiniteloopcloud/protoc-gen-go-types/internal/genid"
 	"github.com/infiniteloopcloud/protoc-gen-go-types/internal/strs"
+	"github.com/infiniteloopcloud/protoc-gen-go-types/log"
 	"github.com/infiniteloopcloud/protoc-gen-go-types/proto"
 	"github.com/infiniteloopcloud/protoc-gen-go-types/reflect/protodesc"
 	"github.com/infiniteloopcloud/protoc-gen-go-types/reflect/protoreflect"
@@ -63,10 +64,19 @@ func run(opts Options, f func(*Plugin) error) error {
 	if err != nil {
 		return err
 	}
+	log.Log("\n\nRaw request byte: []byte{")
+	for i, b := range in {
+		if i > 0 {
+			log.Log(", ")
+		}
+		log.Log("%d", b)
+	}
+	log.Log("}")
 	req := &pluginpb.CodeGeneratorRequest{}
 	if err := proto.Unmarshal(in, req); err != nil {
 		return err
 	}
+	log.Log("Unmarshalled Request: %s", req.String())
 	gen, err := opts.New(req)
 	if err != nil {
 		return err
