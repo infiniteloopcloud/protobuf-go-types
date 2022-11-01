@@ -20,7 +20,9 @@ import (
 	"github.com/infiniteloopcloud/protoc-gen-go-types/compiler/protogen"
 	"github.com/infiniteloopcloud/protoc-gen-go-types/internal/encoding/tag"
 	"github.com/infiniteloopcloud/protoc-gen-go-types/internal/genid"
+	"github.com/infiniteloopcloud/protoc-gen-go-types/internal/impl"
 	"github.com/infiniteloopcloud/protoc-gen-go-types/internal/version"
+	"github.com/infiniteloopcloud/protoc-gen-go-types/log"
 	"github.com/infiniteloopcloud/protoc-gen-go-types/reflect/protoreflect"
 	"github.com/infiniteloopcloud/protoc-gen-go-types/runtime/protoimpl"
 
@@ -33,12 +35,23 @@ const (
 	EnvTypeOverride         = "TYPE_OVERRIDE"
 )
 
+type overrideParams struct {
+	goType        string
+	goImport      string
+	goImportAlias string
+}
+
+// overrideFields stores all the found messages which are created to override types
+var overrideFields = make(map[string]map[string]overrideParams)
+
 // SupportedFeatures reports the set of supported protobuf language features.
 var SupportedFeatures = uint64(pluginpb.CodeGeneratorResponse_FEATURE_PROTO3_OPTIONAL)
 
 // GenerateVersionMarkers specifies whether to generate version markers.
 var GenerateProtobufSpecific = true
 var TypeOverride = false
+
+var lookupExtensionNames = []string{"go_type", "go_import", "go_import_alias"}
 
 // Standard library dependencies.
 const (
@@ -80,6 +93,8 @@ func GenerateFile(gen *protogen.Plugin, file *protogen.File) *protogen.Generated
 		TypeOverride = true
 	}
 
+	log.Log("GenerateFile>> SkipProtobufSpecific:%v | TypeOverride:%v\n", GenerateProtobufSpecific, TypeOverride)
+
 	filename := file.GeneratedFilenamePrefix + ".pb.go"
 	g := gen.NewGeneratedFile(filename, file.GoImportPath)
 	f := newFileInfo(file)
@@ -103,6 +118,11 @@ func GenerateFile(gen *protogen.Plugin, file *protogen.File) *protogen.Generated
 		g.P()
 	}
 
+	for _, message := range f.allMessages {
+		buildOverrides(message)
+	}
+	log.Log("overrides count: %d\t data: %#v", len(overrideFields), overrideFields)
+	genOverrideImports(g)
 	for i, imps := 0, f.Desc.Imports(); i < imps.Len(); i++ {
 		genImport(gen, g, f, imps.Get(i))
 	}
@@ -121,6 +141,90 @@ func GenerateFile(gen *protogen.Plugin, file *protogen.File) *protogen.Generated
 	}
 
 	return g
+}
+
+func genOverrideImports(g *protogen.GeneratedFile) {
+	for _, overrideMessage := range overrideFields {
+		for _, o := range overrideMessage {
+			if o.goImport != "" {
+				g.QualifiedGoIdent(protogen.GoIdent{
+					GoImportAlias: protogen.GoPackageName(o.goImportAlias),
+					GoImportPath:  protogen.GoImportPath(o.goImport),
+				})
+			}
+		}
+	}
+}
+
+func buildOverrides(message *messageInfo) {
+	// Skip pre-declared
+	if strings.HasPrefix(string(message.Desc.FullName()), "google.protobuf.") {
+		return
+	}
+
+	log.Log("processing message: %s", message.Desc.FullName())
+
+	for _, field := range message.Fields {
+		var override overrideParams
+		log.Log("processing field: %s", field.GoName)
+
+		if uop, uok := processUninterpretedOptions(field); uok {
+			override = uop
+		} else if eop, eok := processExtensions(field); eok {
+			override = eop
+		}
+
+		if override.goType != "" {
+			if _, ok := overrideFields[message.GoIdent.GoName]; !ok {
+				overrideFields[message.GoIdent.GoName] = make(map[string]overrideParams)
+			}
+			overrideFields[message.GoIdent.GoName][field.GoName] = override
+		}
+	}
+}
+
+func processExtensions(field *protogen.Field) (overrideParams, bool) {
+	var override overrideParams
+	var ok bool
+	for _, ex := range field.Desc.Options().(*descriptorpb.FieldOptions).GetExtensionFields() {
+		switch string(ex.Type().TypeDescriptor().FullName()) {
+		case impl.FieldOptionGoType:
+			override.goType = ex.Value().String()
+			ok = true
+		case impl.FieldOptionGoImport:
+			override.goImport = ex.Value().String()
+			ok = true
+		case impl.FieldOptionGoImportAlias:
+			override.goImportAlias = ex.Value().String()
+			ok = true
+		}
+	}
+	return override, ok
+}
+
+func processUninterpretedOptions(field *protogen.Field) (overrideParams, bool) {
+	var override overrideParams
+	var ok bool
+	for _, o := range field.Desc.Options().(*descriptorpb.FieldOptions).GetUninterpretedOption() {
+		for _, namePart := range o.Name {
+			if namePart != nil {
+				log.Log("message field: %s", namePart.GetNamePart())
+				switch namePart.GetNamePart() {
+				case impl.FieldOptionGoType:
+					override.goType = string(o.GetStringValue())
+					ok = true
+				case impl.FieldOptionGoImport:
+					override.goImport = string(o.GetStringValue())
+					ok = true
+				case impl.FieldOptionGoImportAlias:
+					override.goImportAlias = string(o.GetStringValue())
+					ok = true
+				}
+			}
+		}
+	}
+
+	return override, ok
 }
 
 // genStandaloneComments prints all leading comments for a FileDescriptorProto
@@ -419,7 +523,7 @@ func genMessageField(g *protogen.GeneratedFile, f *fileInfo, m *messageInfo, fie
 	if pointer {
 		goType = "*" + goType
 	}
-	goType = goTypeOverride(goType)
+	goType, _ = goTypeOverride(goType, m.GoIdent.GoName, field.GoName)
 	tags := structTags{
 		{"protobuf", fieldProtobufTagValue(field)},
 		{"json", fieldJSONTagValue(field)},
@@ -459,7 +563,7 @@ func genMessageDefaultDecls(g *protogen.GeneratedFile, f *fileInfo, m *messageIn
 		}
 		name := "Default_" + m.GoIdent.GoName + "_" + field.GoName
 		goType, _ := fieldGoType(g, f, field)
-		goType = goTypeOverride(goType)
+		goType, _ = goTypeOverride(goType, m.GoIdent.GoName, field.GoName)
 		defVal := field.Desc.Default()
 		switch field.Desc.Kind() {
 		case protoreflect.StringKind:
@@ -582,8 +686,9 @@ func genMessageGetterMethods(g *protogen.GeneratedFile, f *fileInfo, m *messageI
 
 		// Getter for message field.
 		goType, pointer := fieldGoType(g, f, field)
-		goType = goTypeOverride(goType)
-		defaultValue := fieldDefaultValue(g, f, m, field)
+		var overwritten bool
+		goType, overwritten = goTypeOverride(goType, m.GoIdent.GoName, field.GoName)
+		defaultValue := fieldDefaultValue(g, f, m, field, goType, overwritten)
 		g.Annotate(m.GoIdent.GoName+".Get"+field.GoName, field.Location)
 		leadingComments := appendDeprecationSuffix("",
 			field.Desc.Options().(*descriptorpb.FieldOptions).GetDeprecated())
@@ -709,7 +814,10 @@ func fieldProtobufTagValue(field *protogen.Field) string {
 	return tag.Marshal(field.Desc, enumName)
 }
 
-func fieldDefaultValue(g *protogen.GeneratedFile, f *fileInfo, m *messageInfo, field *protogen.Field) string {
+func fieldDefaultValue(g *protogen.GeneratedFile, f *fileInfo, m *messageInfo, field *protogen.Field, goType string, overwritten bool) string {
+	if overwritten {
+		return overwrittenDefault(goType)
+	}
 	if field.Desc.IsList() {
 		return "nil"
 	}
@@ -732,8 +840,8 @@ func fieldDefaultValue(g *protogen.GeneratedFile, f *fileInfo, m *messageInfo, f
 		if field.Desc.HasOptionalKeyword() {
 			return "nil"
 		} else {
-			goType := g.QualifiedGoIdent(field.Message.GoIdent)
-			goType = goTypeOverride(goType)
+			// goType := g.QualifiedGoIdent(field.Message.GoIdent)
+			// goType, _ = goTypeOverride(goType, m.GoIdent.GoName, field.GoName)
 			return goType + "{}"
 		}
 	case protoreflect.EnumKind:
@@ -749,6 +857,28 @@ func fieldDefaultValue(g *protogen.GeneratedFile, f *fileInfo, m *messageInfo, f
 	default:
 		return "0"
 	}
+}
+
+func overwrittenDefault(goType string) string {
+	switch goType {
+	case "bool":
+		return "false"
+	case "uint", "uint8", "uint16", "uint32", "uint64", "int", "int8", "int16", "int32", "int64", "float32", "float64", "uintptr", "byte", "rune":
+		return "0"
+	case "complex64":
+		return "complex64(0)"
+	case "complex128":
+		return "complex128(0)"
+	case "any", "interface{}":
+		return "nil"
+	}
+	if strings.HasPrefix(goType, "map") ||
+		strings.HasPrefix(goType, "*") ||
+		strings.HasPrefix(goType, "[]") {
+		// TODO implement custom interface in the future
+		return "nil"
+	}
+	return goType + "{}"
 }
 
 func fieldJSONTagValue(field *protogen.Field) string {
@@ -921,16 +1051,17 @@ func (c trailingComment) String() string {
 	return s
 }
 
-func goTypeOverride(goType string) string {
+func goTypeOverride(goType string, msgName string, fieldName string) (string, bool) {
 	if TypeOverride {
-		switch goType {
-		case "TimeTime":
-			return "time.Time"
+		// TODO check the case when goType is a map
+		if oMsg, okMsg := overrideFields[msgName]; okMsg {
+			if o, okField := oMsg[fieldName]; okField {
+				return o.goType, true
+			}
 		}
-
-		if strings.Contains(goType, "RepeatedString") {
-			return strings.ReplaceAll(goType, "RepeatedString", "[]string")
-		}
+		// if strings.Contains(goType, "RepeatedString") {
+		// 	return strings.ReplaceAll(goType, "RepeatedString", "[]string")
+		// }
 	}
-	return goType
+	return goType, false
 }

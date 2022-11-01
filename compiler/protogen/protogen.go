@@ -30,6 +30,7 @@ import (
 	"github.com/infiniteloopcloud/protoc-gen-go-types/encoding/prototext"
 	"github.com/infiniteloopcloud/protoc-gen-go-types/internal/genid"
 	"github.com/infiniteloopcloud/protoc-gen-go-types/internal/strs"
+	"github.com/infiniteloopcloud/protoc-gen-go-types/log"
 	"github.com/infiniteloopcloud/protoc-gen-go-types/proto"
 	"github.com/infiniteloopcloud/protoc-gen-go-types/reflect/protodesc"
 	"github.com/infiniteloopcloud/protoc-gen-go-types/reflect/protoreflect"
@@ -63,10 +64,19 @@ func run(opts Options, f func(*Plugin) error) error {
 	if err != nil {
 		return err
 	}
+	log.Log("\n\nRaw request byte: []byte{")
+	for i, b := range in {
+		if i > 0 {
+			log.Log(", ")
+		}
+		log.Log("%d", b)
+	}
+	log.Log("}")
 	req := &pluginpb.CodeGeneratorRequest{}
 	if err := proto.Unmarshal(in, req); err != nil {
 		return err
 	}
+	log.Log("Unmarshalled Request: %s", req.String())
 	gen, err := opts.New(req)
 	if err != nil {
 		return err
@@ -950,7 +960,12 @@ func (g *GeneratedFile) QualifiedGoIdent(ident GoIdent) string {
 	if packageName, ok := g.packageNames[ident.GoImportPath]; ok {
 		return string(packageName) + "." + ident.GoName
 	}
-	packageName := cleanPackageName(path.Base(string(ident.GoImportPath)))
+	var packageName GoPackageName
+	if ident.GoImportAlias == "" {
+		packageName = cleanPackageName(path.Base(string(ident.GoImportPath)))
+	} else {
+		packageName = ident.GoImportAlias
+	}
 	for i, orig := 1, packageName; g.usedPackageNames[packageName]; i++ {
 		packageName = orig + GoPackageName(strconv.Itoa(i))
 	}
@@ -1163,8 +1178,9 @@ func (g *GeneratedFile) metaFile(content []byte) (string, error) {
 // A GoIdent is a Go identifier, consisting of a name and import path.
 // The name is a single identifier and may not be a dot-qualified selector.
 type GoIdent struct {
-	GoName       string
-	GoImportPath GoImportPath
+	GoName        string
+	GoImportAlias GoPackageName
+	GoImportPath  GoImportPath
 }
 
 func (id GoIdent) String() string { return fmt.Sprintf("%q.%v", id.GoImportPath, id.GoName) }

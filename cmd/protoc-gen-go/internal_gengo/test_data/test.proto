@@ -1,20 +1,32 @@
 syntax = "proto3";
 
-option go_package = ".;proto";
-
 package proto;
 
-message Test {
-  TimeTime created_at = 1;
-  map<uint64, RepeatedString> map_field = 2;
-  string test = 3;
-  String other = 43;
+option go_package = ".;proto";
+
+//import "./test_data/config.proto";
+// to test with other languages, switch to this import and run
+// cd cmd/protoc-gen-go/internal_gengo
+// TYPE_OVERRIDE=true DEBUG=true protoc --go_out=test_data -I test_data test_data/test.proto
+import "config.proto";
+
+// Or use the following hard coded field option extension
+//import "google/protobuf/descriptor.proto";
+//
+//extend google.protobuf.FieldOptions {
+//  optional string go_type = 1001;
+//  optional string go_import = 1002;
+//  optional string go_import_alias = 1003;
+//}
+
+message RepeatedString {
 }
 
-message TimeTime {}
-
-message RepeatedString {}
-
-message String {
-  string string = 2;
+message Test {
+  int64 created_at = 1 [(go_type) = "time.Time", (go_import) = "time"];
+  map<uint64, RepeatedString> map_field = 2 [(go_type) = "map[uint64][]string", (go_import) = ""];
+  string test = 3;
+  string optStr = 4 [(go_type) = "null.String", (go_import) = "github.com/volatiletech/null/v9", (go_import_alias) = "null"];
+  int32 optInt = 5 [(go_type) = "null.Int32"];
+  int32 optBigInt = 6 [(go_type) = "null.Int64", (go_import) = "github.com/volatiletech/null/v9", (go_import_alias) = "null"];
 }

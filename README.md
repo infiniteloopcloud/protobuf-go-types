@@ -41,4 +41,8 @@ message TimeTime {}
 
 #### Important
 
-Currently the generator not importing the `time` package automatically. Temporary solution can be: `goimports -w *.pb.go`. 
+Currently the overwritten FieldOptions (go_type, go_import, go_import_alias) must be paired with these numbers:
+go_type = 1001
+go_import = 1002
+go_import_alias = 1003
+Because `protoc` can't process the extended options, so we can't find the by name, just by place. 

@@ -6,14 +6,27 @@ package impl
 
 import (
 	"math/bits"
+	"reflect"
 
 	"github.com/infiniteloopcloud/protoc-gen-go-types/encoding/protowire"
 	"github.com/infiniteloopcloud/protoc-gen-go-types/internal/errors"
+	"github.com/infiniteloopcloud/protoc-gen-go-types/internal/filedesc"
 	"github.com/infiniteloopcloud/protoc-gen-go-types/internal/flags"
+	"github.com/infiniteloopcloud/protoc-gen-go-types/log"
 	"github.com/infiniteloopcloud/protoc-gen-go-types/proto"
 	"github.com/infiniteloopcloud/protoc-gen-go-types/reflect/protoreflect"
 	"github.com/infiniteloopcloud/protoc-gen-go-types/reflect/protoregistry"
 	"github.com/infiniteloopcloud/protoc-gen-go-types/runtime/protoiface"
+)
+
+const (
+	FieldOptionGoType        = "go_type"
+	FieldOptionGoImport      = "go_import"
+	FieldOptionGoImportAlias = "go_import_alias"
+
+	FieldOptionGoTypeNum        = 1001
+	FieldOptionGoImportNum      = 1002
+	FieldOptionGoImportAliasNum = 1003
 )
 
 var errDecode = errors.New("cannot parse invalid wire-format data")
@@ -210,10 +223,12 @@ func (mi *MessageInfo) unmarshalExtension(b []byte, num protowire.Number, wtyp p
 	if xt == nil {
 		var err error
 		xt, err = opts.resolver.FindExtensionByNumber(mi.Desc.FullName(), num)
-		if err != nil {
-			if err == protoregistry.NotFound {
+		if err == protoregistry.NotFound {
+			xt, err = mi.fallbackCreateExtension(num)
+			if err != nil {
 				return out, errUnknown
 			}
+		} else if err != nil {
 			return out, errors.New("%v: unable to resolve extension %v: %v", mi.Desc.FullName(), num, err)
 		}
 	}
@@ -254,6 +269,43 @@ func (mi *MessageInfo) unmarshalExtension(b []byte, num protowire.Number, wtyp p
 	x.Set(xt, v)
 	exts[int32(num)] = x
 	return out, nil
+}
+
+func (mi *MessageInfo) fallbackCreateExtension(num protowire.Number) (protoreflect.ExtensionType, error) {
+	// FIXME: not the best solution, figure out something later
+	var name string
+	switch int32(num) {
+	case FieldOptionGoTypeNum:
+		name = FieldOptionGoType
+	case FieldOptionGoImportNum:
+		name = FieldOptionGoImport
+	case FieldOptionGoImportAliasNum:
+		name = FieldOptionGoImportAlias
+	default:
+		return nil, errors.New("invalid name")
+	}
+
+	exInf := &ExtensionInfo{}
+	xd := &filedesc.Field{
+		Base: filedesc.Base{
+			L0: filedesc.BaseL0{
+				ParentFile: filedesc.SurrogateProto3,
+				Parent:     mi.Desc,
+				FullName:   protoreflect.FullName(name),
+			},
+		},
+		L1: filedesc.FieldL1{
+			Number:      num,
+			Cardinality: protoreflect.Optional,
+			Kind:        protoreflect.StringKind,
+		},
+	}
+	InitExtensionInfo(exInf, xd, reflect.TypeOf(""))
+	if err := protoregistry.GlobalTypes.RegisterExtension(exInf); err != nil {
+		log.Log("GlobalTypes.RegisterExtension::%v", err)
+		return nil, err
+	}
+	return exInf, nil
 }
 
 func skipExtension(b []byte, xi *extensionFieldInfo, num protowire.Number, wtyp protowire.Type, opts unmarshalOptions) (out unmarshalOutput, _ ValidationStatus) {
