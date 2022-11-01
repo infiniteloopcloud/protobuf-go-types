@@ -872,7 +872,10 @@ func overwrittenDefault(goType string) string {
 	case "any", "interface{}":
 		return "nil"
 	}
-	if strings.HasPrefix(goType, "map") || strings.HasPrefix(goType, "*") {
+	if strings.HasPrefix(goType, "map") ||
+		strings.HasPrefix(goType, "*") ||
+		strings.HasPrefix(goType, "[]") {
+		// TODO implement custom interface in the future
 		return "nil"
 	}
 	return goType + "{}"
