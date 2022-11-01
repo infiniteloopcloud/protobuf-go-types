@@ -523,7 +523,7 @@ func genMessageField(g *protogen.GeneratedFile, f *fileInfo, m *messageInfo, fie
 	if pointer {
 		goType = "*" + goType
 	}
-	goType = goTypeOverride(goType, m.GoIdent.GoName, field.GoName)
+	goType, _ = goTypeOverride(goType, m.GoIdent.GoName, field.GoName)
 	tags := structTags{
 		{"protobuf", fieldProtobufTagValue(field)},
 		{"json", fieldJSONTagValue(field)},
@@ -563,7 +563,7 @@ func genMessageDefaultDecls(g *protogen.GeneratedFile, f *fileInfo, m *messageIn
 		}
 		name := "Default_" + m.GoIdent.GoName + "_" + field.GoName
 		goType, _ := fieldGoType(g, f, field)
-		goType = goTypeOverride(goType, m.GoIdent.GoName, field.GoName)
+		goType, _ = goTypeOverride(goType, m.GoIdent.GoName, field.GoName)
 		defVal := field.Desc.Default()
 		switch field.Desc.Kind() {
 		case protoreflect.StringKind:
@@ -686,8 +686,9 @@ func genMessageGetterMethods(g *protogen.GeneratedFile, f *fileInfo, m *messageI
 
 		// Getter for message field.
 		goType, pointer := fieldGoType(g, f, field)
-		goType = goTypeOverride(goType, m.GoIdent.GoName, field.GoName)
-		defaultValue := fieldDefaultValue(g, f, m, field)
+		var overwritten bool
+		goType, overwritten = goTypeOverride(goType, m.GoIdent.GoName, field.GoName)
+		defaultValue := fieldDefaultValue(g, f, m, field, goType, overwritten)
 		g.Annotate(m.GoIdent.GoName+".Get"+field.GoName, field.Location)
 		leadingComments := appendDeprecationSuffix("",
 			field.Desc.Options().(*descriptorpb.FieldOptions).GetDeprecated())
@@ -813,7 +814,10 @@ func fieldProtobufTagValue(field *protogen.Field) string {
 	return tag.Marshal(field.Desc, enumName)
 }
 
-func fieldDefaultValue(g *protogen.GeneratedFile, f *fileInfo, m *messageInfo, field *protogen.Field) string {
+func fieldDefaultValue(g *protogen.GeneratedFile, f *fileInfo, m *messageInfo, field *protogen.Field, goType string, overwritten bool) string {
+	if overwritten {
+		return overwrittenDefault(goType)
+	}
 	if field.Desc.IsList() {
 		return "nil"
 	}
@@ -836,8 +840,8 @@ func fieldDefaultValue(g *protogen.GeneratedFile, f *fileInfo, m *messageInfo, f
 		if field.Desc.HasOptionalKeyword() {
 			return "nil"
 		} else {
-			goType := g.QualifiedGoIdent(field.Message.GoIdent)
-			goType = goTypeOverride(goType, m.GoIdent.GoName, field.GoName)
+			// goType := g.QualifiedGoIdent(field.Message.GoIdent)
+			// goType, _ = goTypeOverride(goType, m.GoIdent.GoName, field.GoName)
 			return goType + "{}"
 		}
 	case protoreflect.EnumKind:
@@ -853,6 +857,25 @@ func fieldDefaultValue(g *protogen.GeneratedFile, f *fileInfo, m *messageInfo, f
 	default:
 		return "0"
 	}
+}
+
+func overwrittenDefault(goType string) string {
+	switch goType {
+	case "bool":
+		return "false"
+	case "uint", "uint8", "uint16", "uint32", "uint64", "int", "int8", "int16", "int32", "int64", "float32", "float64", "uintptr", "byte", "rune":
+		return "0"
+	case "complex64":
+		return "complex64(0)"
+	case "complex128":
+		return "complex128(0)"
+	case "any", "interface{}":
+		return "nil"
+	}
+	if strings.HasPrefix(goType, "map") || strings.HasPrefix(goType, "*") {
+		return "nil"
+	}
+	return goType + "{}"
 }
 
 func fieldJSONTagValue(field *protogen.Field) string {
@@ -1025,17 +1048,17 @@ func (c trailingComment) String() string {
 	return s
 }
 
-func goTypeOverride(goType string, msgName string, fieldName string) string {
+func goTypeOverride(goType string, msgName string, fieldName string) (string, bool) {
 	if TypeOverride {
 		// TODO check the case when goType is a map
 		if oMsg, okMsg := overrideFields[msgName]; okMsg {
 			if o, okField := oMsg[fieldName]; okField {
-				return o.goType
+				return o.goType, true
 			}
 		}
 		// if strings.Contains(goType, "RepeatedString") {
 		// 	return strings.ReplaceAll(goType, "RepeatedString", "[]string")
 		// }
 	}
-	return goType
+	return goType, false
 }
