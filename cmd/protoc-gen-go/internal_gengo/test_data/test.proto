@@ -29,4 +29,5 @@ message Test {
   string optStr = 4 [(go_type) = "null.String", (go_import) = "github.com/volatiletech/null/v9", (go_import_alias) = "null"];
   int32 optInt = 5 [(go_type) = "null.Int32"];
   int32 optBigInt = 6 [(go_type) = "null.Int64", (go_import) = "github.com/volatiletech/null/v9", (go_import_alias) = "null"];
+  string something = 7 [(go_type) = "Something", (go_import) = "", (go_zero_override) = "\"\""];
 }
