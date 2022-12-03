@@ -36,10 +36,10 @@ const (
 )
 
 type overrideParams struct {
-	goType        string
-	goImport      string
-	goImportAlias string
-	zeroOverride  string
+	goType         string
+	goImport       string
+	goImportAlias  string
+	goZeroOverride string
 }
 
 // overrideFields stores all the found messages which are created to override types
@@ -198,9 +198,9 @@ func processExtensions(field *protogen.Field) (overrideParams, bool) {
 		case impl.FieldOptionGoImportAlias:
 			override.goImportAlias = ex.Value().String()
 			ok = true
-		case impl.FieldOptionZeroOverride:
+		case impl.FieldOptionGoZeroOverride:
 			log.Log("processExtensions:: zero override found!")
-			override.zeroOverride = ex.Value().String()
+			override.goZeroOverride = ex.Value().String()
 			ok = true
 		}
 	}
@@ -224,8 +224,8 @@ func processUninterpretedOptions(field *protogen.Field) (overrideParams, bool) {
 				case impl.FieldOptionGoImportAlias:
 					override.goImportAlias = string(o.GetStringValue())
 					ok = true
-				case impl.FieldOptionZeroOverride:
-					override.zeroOverride = string(o.GetStringValue())
+				case impl.FieldOptionGoZeroOverride:
+					override.goZeroOverride = string(o.GetStringValue())
 					ok = true
 				}
 			}
@@ -830,9 +830,9 @@ func fieldProtobufTagValue(field *protogen.Field) string {
 
 func fieldDefaultValue(g *protogen.GeneratedFile, f *fileInfo, m *messageInfo, field *protogen.Field, goType string, overrideParam overrideParams, overwritten bool) string {
 	if overwritten {
-		log.Log("custom zero value: %q", overrideParam.zeroOverride)
-		if overrideParam.zeroOverride != "" {
-			return overrideParam.zeroOverride
+		log.Log("custom zero value: %q", overrideParam.goZeroOverride)
+		if overrideParam.goZeroOverride != "" {
+			return overrideParam.goZeroOverride
 		}
 		return overwrittenDefault(goType)
 	}

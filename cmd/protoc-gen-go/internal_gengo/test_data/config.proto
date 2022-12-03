@@ -10,5 +10,5 @@ extend google.protobuf.FieldOptions {
   optional string go_type = 1001;
   optional string go_import = 1002;
   optional string go_import_alias = 1003;
-  optional string zero_override = 1004;
+  optional string go_zero_override = 1004;
 }

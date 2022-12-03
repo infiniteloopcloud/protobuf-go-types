@@ -41,9 +41,9 @@ message TimeTime {}
 
 #### Important
 
-Currently the overwritten FieldOptions (go_type, go_import, go_import_alias, zero_override) must be paired with these numbers:
+Currently the overwritten FieldOptions (go_type, go_import, go_import_alias, go_zero_override) must be paired with these numbers:
 go_type = 1001
 go_import = 1002
 go_import_alias = 1003
-zero_override = 1004
+go_zero_override = 1004
 Because `protoc` can't process the extended options, so we can't find the by name, just by place.
