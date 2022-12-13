@@ -13,7 +13,7 @@ on:
   pull_request:
 
 env:
-  IMAGE_NAME: protoc-gen-go-types
+  IMAGE_NAME: ${{ github.repository }}
 
 jobs:
   #test_go_build:
@@ -57,7 +57,7 @@ jobs:
           [ "$VERSION" == "main" ] && VERSION=latest
           echo VERSION=$VERSION
 
-            docker build -t "protoc-go-types:$VERSION" .
+            docker build -t "$IMAGE_NAME:$VERSION" .
   push:
     # Ensure test job passes before pushing image
     needs: test_docker_build
@@ -74,13 +74,13 @@ jobs:
 
       - name: Build image
         run: |
-          docker build . --file Dockerfile --tag $IMAGE_NAME
+          docker build -t "$IMAGE_NAME:$VERSION" .
       - name: Log into registry
-        run: echo "${{ secrets.DEPLOYMENT_TOKEN }}" | docker login docker.pkg.github.com -u ${{ github.actor }} --password-stdin
+        run: echo "${{ secrets.DEPLOYMENT_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
       - name: Push image
         run: |
-          IMAGE_ID=docker.pkg.github.com/${{ github.repository }}/$IMAGE_NAME
+          IMAGE_ID=ghcr.io/$IMAGE_NAME
           # Change all uppercase to lowercase
           IMAGE_ID=$(echo $IMAGE_ID | tr '[A-Z]' '[a-z]')
           # Strip git ref prefix from version
