@@ -43,8 +43,8 @@ uses: docker/login-action@v1
 with:
 registry: ghcr.io
 username: ${{ github.actor }}
-password: ${{ secrets.GITHUB_TOKEN }}
-- name: Build the hello-docker Docker image
+password: ${{ secrets.DEPLOYMENT_TOKEN }}
+- name: Build Docker image
 run: |
   VERSION=$(echo "${{ github.ref }}" | sed -e 's,.*/\(.*\),\1,')
   # Strip "v" prefix from tag name
