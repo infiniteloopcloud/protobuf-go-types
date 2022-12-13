@@ -1,13 +1,6 @@
 name: Docker
 
-on:
-  push:
-    branches:
-      - dev-wolfy
-      #- master
-
-    tags:
-      - v*
+on: [push]
 
   # Run tests for any PRs
   pull_request:
@@ -45,23 +38,22 @@ jobs:
   push:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v1
+      - uses: actions/checkout@v2
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v1
         with:
           registry: ghcr.io
-          username: ${{ github.repository_owner }}
+          username: ${{ github.actor }}
           password: ${{ secrets.DEPLOYMENT_TOKEN }}
-      - name: Build and Push Docker Image
-        run: |
-          VERSION=$(echo "${{ github.ref }}" | sed -e 's,.*/\(.*\),\1,')
-          # Strip "v" prefix from tag name
-          [[ "${{ github.ref }}" == "refs/tags/"* ]] && VERSION=$(echo $VERSION | sed -e 's/^v//')
-          # Use Docker `latest` tag convention
-          [ "$VERSION" == "master" ] && VERSION=latest
-          echo VERSION=$VERSION
+      - name: Build the hello-docker Docker image
+      run: |
+            VERSION=$(echo "${{ github.ref }}" | sed -e 's,.*/\(.*\),\1,')
+            # Strip "v" prefix from tag name
+            [[ "${{ github.ref }}" == "refs/tags/"* ]] && VERSION=$(echo $VERSION | sed -e 's/^v//')
+            # Use Docker `latest` tag convention
+            [ "$VERSION" == "master" ] && VERSION=latest
+            echo VERSION=$VERSION
 
-          docker build . --tag ghcr.io/$IMAGE_NAME:$VERSION
-          docker run ghcr.io/$IMAGE_NAME:$VERSION
-          docker push ghcr.io/$IMAGE_NAME:$VERSION
+            docker build . --tag ghcr.io/$IMAGE_NAME:$VERSION
+            docker run ghcr.io/$IMAGE_NAME:$VERSION
+            docker push ghcr.io/$IMAGE_NAME:$VERSION
