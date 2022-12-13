@@ -55,7 +55,6 @@ jobs:
           [[ "${{ github.ref }}" == "refs/tags/"* ]] && VERSION=$(echo $VERSION | sed -e 's/^v//')
           # Use Docker `latest` tag convention
           [ "$VERSION" == "main" ] && VERSION=latest
-          echo IMAGE_ID=$IMAGE_ID
           echo VERSION=$VERSION
 
             docker build -t "protoc-go-types:$VERSION" .
@@ -76,9 +75,9 @@ jobs:
       - name: Build image
         run: |
           docker build . --file Dockerfile --tag $IMAGE_NAME
-      #- name: Log into registry
-      #  run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login docker.pkg.github.com -u ${{ github.actor }} --password-stdin
-      #
+      - name: Log into registry
+        run: echo "${{ secrets.DEPLOYMENT_TOKEN }}" | docker login docker.pkg.github.com -u ${{ github.actor }} --password-stdin
+
       #- name: Push image
       #  run: |
       #    IMAGE_ID=docker.pkg.github.com/${{ github.repository }}/$IMAGE_NAME
