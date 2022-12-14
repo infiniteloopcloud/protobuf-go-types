@@ -13,9 +13,10 @@ COPY . .
 RUN go build -o /out/protoc-gen-go-types .
 
 # Final
-FROM alpine:3.7
+FROM alpine:3.17
 
 COPY --from=go_builder /out/protoc-gen-go-types /usr/bin/protoc-gen-go-types
+RUN apk add protobuf-dev
 RUN apk add --no-cache libstdc++ protobuf
 
 CMD ["/usr/bin/protoc"]
