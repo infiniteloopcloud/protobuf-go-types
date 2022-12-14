@@ -18,4 +18,4 @@ FROM alpine:3.7
 COPY --from=go_builder /out/protoc-gen-go-types /usr/bin/protoc-gen-go-types
 RUN apk add --no-cache libstdc++ protobuf
 
-ENTRYPOINT ["/usr/bin/protoc"]
+CMD ["/usr/bin/protoc"]
