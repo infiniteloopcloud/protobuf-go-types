@@ -608,6 +608,9 @@ func buildTags(wrappedTags string) [][2]string {
 			if len(submatch) != 3 {
 				continue
 			}
+			if submatch[1] == "protobuf_key" || submatch[1] == "protobuf_val" || submatch[1] == "protobuf" {
+				continue
+			}
 			tags = append(tags, [2]string{submatch[1], submatch[2]})
 		}
 	}
