@@ -753,7 +753,7 @@ func genMessageGetterMethods(g *protogen.GeneratedFile, f *fileInfo, m *messageI
 		if overwritten && overrideParam.goType != "" {
 			goType = overrideParam.goType
 		}
-		defaultValue := fieldDefaultValue(g, f, m, field, goType, overrideParam, overwritten)
+		defaultValue := fieldDefaultValue(g, f, m, field, goType, overrideParam, overwritten && overrideParam.goType != "")
 		g.Annotate(m.GoIdent.GoName+".Get"+field.GoName, field.Location)
 		leadingComments := appendDeprecationSuffix("",
 			field.Desc.Options().(*descriptorpb.FieldOptions).GetDeprecated())
