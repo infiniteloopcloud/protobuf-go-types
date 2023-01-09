@@ -24,11 +24,13 @@ const (
 	FieldOptionGoImport       = "go_import"
 	FieldOptionGoImportAlias  = "go_import_alias"
 	FieldOptionGoZeroOverride = "go_zero_override"
+	FieldOptionGoStructTags   = "go_struct_tags"
 
 	FieldOptionGoTypeNum         = 1001
 	FieldOptionGoImportNum       = 1002
 	FieldOptionGoImportAliasNum  = 1003
 	FieldOptionGoZeroOverrideNum = 1004
+	FieldOptionGoStructTagsNum   = 1005
 )
 
 var errDecode = errors.New("cannot parse invalid wire-format data")
@@ -285,6 +287,8 @@ func (mi *MessageInfo) fallbackCreateExtension(num protowire.Number) (protorefle
 		name = FieldOptionGoImportAlias
 	case FieldOptionGoZeroOverrideNum:
 		name = FieldOptionGoZeroOverride
+	case FieldOptionGoStructTagsNum:
+		name = FieldOptionGoStructTags
 	default:
 		return nil, errors.New("invalid name")
 	}
