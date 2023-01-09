@@ -44,6 +44,10 @@ type overrideParams struct {
 	goStructTags   string
 }
 
+func (r overrideParams) IsZero() bool {
+	return r.goType == "" && r.goImport == "" && r.goImportAlias == "" && r.goZeroOverride == "" && r.goStructTags == ""
+}
+
 // overrideFields stores all the found messages which are created to override types
 var overrideFields = make(map[string]map[string]overrideParams)
 
@@ -179,7 +183,7 @@ func buildOverrides(message *messageInfo) {
 			override = eop
 		}
 
-		if override.goType != "" {
+		if !override.IsZero() {
 			if _, ok := overrideFields[message.GoIdent.GoName]; !ok {
 				overrideFields[message.GoIdent.GoName] = make(map[string]overrideParams)
 			}
@@ -541,7 +545,7 @@ func genMessageField(g *protogen.GeneratedFile, f *fileInfo, m *messageInfo, fie
 	if pointer {
 		goType = "*" + goType
 	}
-	if overrideParam, ok := getOverrideField(m.GoIdent.GoName, field.GoName); ok {
+	if overrideParam, ok := getOverrideField(m.GoIdent.GoName, field.GoName); ok && overrideParam.goType != "" {
 		goType = overrideParam.goType
 	}
 	tags := structTags{
@@ -588,6 +592,7 @@ func getOverrideField(messageName, fieldName string) (overrideParams, bool) {
 
 func getAdditionalTags(m *messageInfo, field *protogen.Field) [][2]string {
 	o, ok := getOverrideField(m.GoIdent.GoName, field.GoName)
+	log.Log("getAdditionalTags::getOverrideField:: Msg:%s Field:%s ok:%v tag:%s", m.GoIdent.GoName, field.GoName, ok, o.goStructTags)
 	if !ok || o.goStructTags == "" {
 		return [][2]string{
 			{"json", fieldJSONTagValue(field)},
@@ -619,7 +624,7 @@ func genMessageDefaultDecls(g *protogen.GeneratedFile, f *fileInfo, m *messageIn
 		}
 		name := "Default_" + m.GoIdent.GoName + "_" + field.GoName
 		goType, _ := fieldGoType(g, f, field)
-		if overrideParam, ok := getOverrideField(m.GoIdent.GoName, field.GoName); ok {
+		if overrideParam, ok := getOverrideField(m.GoIdent.GoName, field.GoName); ok && overrideParam.goType != "" {
 			goType = overrideParam.goType
 		}
 		defVal := field.Desc.Default()
@@ -745,7 +750,7 @@ func genMessageGetterMethods(g *protogen.GeneratedFile, f *fileInfo, m *messageI
 		// Getter for message field.
 		goType, pointer := fieldGoType(g, f, field)
 		overrideParam, overwritten := getOverrideField(m.GoIdent.GoName, field.GoName)
-		if overwritten {
+		if overwritten && overrideParam.goType != "" {
 			goType = overrideParam.goType
 		}
 		defaultValue := fieldDefaultValue(g, f, m, field, goType, overrideParam, overwritten)
