@@ -27,7 +27,7 @@ message Test {
   map<uint64, RepeatedString> map_field = 2 [(go_type) = "map[uint64][]string", (go_import) = ""];
   string test = 3;
   string optStr = 4 [(go_type) = "null.String", (go_import) = "github.com/volatiletech/null/v9", (go_import_alias) = "null"];
-  int32 optInt = 5 [(go_type) = "null.Int32"];
+  int32 optInt = 5 [(go_type) = "null.Int32", (go_struct_tags) = "json=-;boil=hello"];
   int32 optBigInt = 6 [(go_type) = "null.Int64", (go_import) = "github.com/volatiletech/null/v9", (go_import_alias) = "null"];
   string something = 7 [(go_type) = "Something", (go_import) = "", (go_zero_override) = "\"\""];
 }

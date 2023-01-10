@@ -12,6 +12,7 @@ import (
 	"go/token"
 	"math"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"unicode"
@@ -40,6 +41,11 @@ type overrideParams struct {
 	goImport       string
 	goImportAlias  string
 	goZeroOverride string
+	goStructTags   string
+}
+
+func (r overrideParams) IsZero() bool {
+	return r.goType == "" && r.goImport == "" && r.goImportAlias == "" && r.goZeroOverride == "" && r.goStructTags == ""
 }
 
 // overrideFields stores all the found messages which are created to override types
@@ -51,6 +57,8 @@ var SupportedFeatures = uint64(pluginpb.CodeGeneratorResponse_FEATURE_PROTO3_OPT
 // GenerateVersionMarkers specifies whether to generate version markers.
 var GenerateProtobufSpecific = true
 var TypeOverride = false
+
+var tagRegex = regexp.MustCompile(`([^=;]+)=([^;]+);?`)
 
 var lookupExtensionNames = []string{"go_type", "go_import", "go_import_alias"}
 
@@ -175,7 +183,7 @@ func buildOverrides(message *messageInfo) {
 			override = eop
 		}
 
-		if override.goType != "" {
+		if !override.IsZero() {
 			if _, ok := overrideFields[message.GoIdent.GoName]; !ok {
 				overrideFields[message.GoIdent.GoName] = make(map[string]overrideParams)
 			}
@@ -202,6 +210,9 @@ func processExtensions(field *protogen.Field) (overrideParams, bool) {
 			log.Log("processExtensions:: zero override found!")
 			override.goZeroOverride = ex.Value().String()
 			ok = true
+		case impl.FieldOptionGoStructTags:
+			override.goStructTags = ex.Value().String()
+			ok = true
 		}
 	}
 	return override, ok
@@ -226,6 +237,9 @@ func processUninterpretedOptions(field *protogen.Field) (overrideParams, bool) {
 					ok = true
 				case impl.FieldOptionGoZeroOverride:
 					override.goZeroOverride = string(o.GetStringValue())
+					ok = true
+				case impl.FieldOptionGoStructTags:
+					override.goStructTags = string(o.GetStringValue())
 					ok = true
 				}
 			}
@@ -531,13 +545,14 @@ func genMessageField(g *protogen.GeneratedFile, f *fileInfo, m *messageInfo, fie
 	if pointer {
 		goType = "*" + goType
 	}
-	if overrideParam, ok := goTypeOverride(m.GoIdent.GoName, field.GoName); ok {
+	if overrideParam, ok := getOverrideField(m.GoIdent.GoName, field.GoName); ok && overrideParam.goType != "" {
 		goType = overrideParam.goType
 	}
 	tags := structTags{
 		{"protobuf", fieldProtobufTagValue(field)},
-		{"json", fieldJSONTagValue(field)},
 	}
+	tags = append(tags, getAdditionalTags(m, field)...)
+
 	if field.Desc.IsMap() {
 		key := field.Message.Fields[0]
 		val := field.Message.Fields[1]
@@ -563,6 +578,45 @@ func genMessageField(g *protogen.GeneratedFile, f *fileInfo, m *messageInfo, fie
 	sf.append(field.GoName)
 }
 
+func getOverrideField(messageName, fieldName string) (overrideParams, bool) {
+	if !TypeOverride {
+		return overrideParams{}, false
+	}
+	overrideMsg, ok := overrideFields[messageName]
+	if !ok {
+		return overrideParams{}, false
+	}
+	overrideField, ok := overrideMsg[fieldName]
+	return overrideField, ok
+}
+
+func getAdditionalTags(m *messageInfo, field *protogen.Field) [][2]string {
+	o, ok := getOverrideField(m.GoIdent.GoName, field.GoName)
+	log.Log("getAdditionalTags::getOverrideField:: Msg:%s Field:%s ok:%v tag:%s", m.GoIdent.GoName, field.GoName, ok, o.goStructTags)
+	if !ok || o.goStructTags == "" {
+		return [][2]string{
+			{"json", fieldJSONTagValue(field)},
+		}
+	}
+	return buildTags(o.goStructTags)
+}
+
+func buildTags(wrappedTags string) [][2]string {
+	var tags [][2]string
+	for _, token := range strings.Split(wrappedTags, ";") {
+		for _, submatch := range tagRegex.FindAllStringSubmatch(token, -1) {
+			if len(submatch) != 3 {
+				continue
+			}
+			if submatch[1] == "protobuf_key" || submatch[1] == "protobuf_val" || submatch[1] == "protobuf" {
+				continue
+			}
+			tags = append(tags, [2]string{submatch[1], submatch[2]})
+		}
+	}
+	return tags
+}
+
 // genMessageDefaultDecls generates consts and vars holding the default
 // values of fields.
 func genMessageDefaultDecls(g *protogen.GeneratedFile, f *fileInfo, m *messageInfo) {
@@ -573,7 +627,7 @@ func genMessageDefaultDecls(g *protogen.GeneratedFile, f *fileInfo, m *messageIn
 		}
 		name := "Default_" + m.GoIdent.GoName + "_" + field.GoName
 		goType, _ := fieldGoType(g, f, field)
-		if overrideParam, ok := goTypeOverride(m.GoIdent.GoName, field.GoName); ok {
+		if overrideParam, ok := getOverrideField(m.GoIdent.GoName, field.GoName); ok && overrideParam.goType != "" {
 			goType = overrideParam.goType
 		}
 		defVal := field.Desc.Default()
@@ -698,11 +752,11 @@ func genMessageGetterMethods(g *protogen.GeneratedFile, f *fileInfo, m *messageI
 
 		// Getter for message field.
 		goType, pointer := fieldGoType(g, f, field)
-		overrideParam, overwritten := goTypeOverride(m.GoIdent.GoName, field.GoName)
-		if overwritten {
+		overrideParam, overwritten := getOverrideField(m.GoIdent.GoName, field.GoName)
+		if overwritten && overrideParam.goType != "" {
 			goType = overrideParam.goType
 		}
-		defaultValue := fieldDefaultValue(g, f, m, field, goType, overrideParam, overwritten)
+		defaultValue := fieldDefaultValue(g, f, m, field, goType, overrideParam, overwritten && overrideParam.goType != "")
 		g.Annotate(m.GoIdent.GoName+".Get"+field.GoName, field.Location)
 		leadingComments := appendDeprecationSuffix("",
 			field.Desc.Options().(*descriptorpb.FieldOptions).GetDeprecated())
@@ -1067,19 +1121,4 @@ func (c trailingComment) String() string {
 		return ""
 	}
 	return s
-}
-
-func goTypeOverride(msgName string, fieldName string) (overrideParams, bool) {
-	if TypeOverride {
-		// TODO check the case when goType is a map
-		if oMsg, okMsg := overrideFields[msgName]; okMsg {
-			if o, okField := oMsg[fieldName]; okField {
-				return o, true
-			}
-		}
-		// if strings.Contains(goType, "RepeatedString") {
-		// 	return strings.ReplaceAll(goType, "RepeatedString", "[]string")
-		// }
-	}
-	return overrideParams{}, false
 }

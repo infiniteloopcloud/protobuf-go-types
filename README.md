@@ -46,4 +46,5 @@ go_type = 1001
 go_import = 1002
 go_import_alias = 1003
 go_zero_override = 1004
+go_struct_tags = 1005
 Because `protoc` can't process the extended options, so we can't find the by name, just by place.
