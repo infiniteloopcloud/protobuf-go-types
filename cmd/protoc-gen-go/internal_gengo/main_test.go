@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/infiniteloopcloud/protoc-gen-go-types/compiler/protogen"
+	"github.com/infiniteloopcloud/protoc-gen-go-types/internal/filedesc"
 	"github.com/infiniteloopcloud/protoc-gen-go-types/parser"
 )
 
@@ -78,6 +79,55 @@ func TestGetAdditionalTags(t *testing.T) {
 	}
 	if tags[0][1] != "id_dont_know,omitempty" {
 		t.Errorf("First tag should be `id_dont_know,omitempty`, instead of %s", tags[0][1])
+	}
+	if tags[1][0] != "boil" {
+		t.Errorf("First tag should be `boil`, instead of %s", tags[1][0])
+	}
+	if tags[1][1] != "donno" {
+		t.Errorf("First tag should be `donno`, instead of %s", tags[1][1])
+	}
+	if tags[2][0] != "validate" {
+		t.Errorf("First tag should be `validate`, instead of %s", tags[2][0])
+	}
+	if tags[2][1] != "true" {
+		t.Errorf("First tag should be `true`, instead of %s", tags[2][1])
+	}
+}
+
+func TestGetAdditionalTagsNoJsonOverride(t *testing.T) {
+	TypeOverride = true
+	overrideFields = map[string]map[string]overrideParams{
+		"TestStruct": {
+			"TestField": overrideParams{
+				goStructTags: `omitempty;boil=donno;validate=true`,
+			},
+		},
+	}
+	tags := getAdditionalTags(&messageInfo{
+		Message: &protogen.Message{
+			GoIdent: protogen.GoIdent{
+				GoName: "TestStruct",
+			},
+		},
+	}, &protogen.Field{
+		GoName: "TestField",
+		Desc: &filedesc.Field{
+			Base: filedesc.Base{
+				L0: filedesc.BaseL0{
+					FullName: "my_test_field",
+				},
+			},
+		},
+	})
+
+	if len(tags) != 3 {
+		t.Fatal("Tags length must be 3")
+	}
+	if tags[0][0] != "json" {
+		t.Errorf("First tag should be `json`, instead of %s", tags[0][0])
+	}
+	if tags[0][1] != "my_test_field,omitempty" {
+		t.Errorf("First tag should be `my_test_field,omitempty`, instead of %s", tags[0][1])
 	}
 	if tags[1][0] != "boil" {
 		t.Errorf("First tag should be `boil`, instead of %s", tags[1][0])
