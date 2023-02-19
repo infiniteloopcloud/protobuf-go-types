@@ -598,7 +598,13 @@ func getAdditionalTags(m *messageInfo, field *protogen.Field) [][2]string {
 			{"json", fieldJSONTagValue(field)},
 		}
 	}
-	return buildTags(o.goStructTags)
+	tags := buildTags(o.goStructTags)
+	if !contains(tags, func(kv [2]string) bool {
+		return kv[0] == "json"
+	}) {
+		tags = append(tags, [2]string{"json", fieldJSONTagValue(field)})
+	}
+	return tags
 }
 
 func buildTags(wrappedTags string) [][2]string {
@@ -608,7 +614,7 @@ func buildTags(wrappedTags string) [][2]string {
 			if len(submatch) != 3 {
 				continue
 			}
-			if submatch[1] == "protobuf_key" || submatch[1] == "protobuf_val" || submatch[1] == "protobuf" {
+			if submatch[1] == "protobuf_key" || submatch[1] == "protobuf_val" || submatch[1] == "protobuf" || submatch[1] == "protobuf_oneof" {
 				continue
 			}
 			tags = append(tags, [2]string{submatch[1], submatch[2]})
@@ -1121,4 +1127,13 @@ func (c trailingComment) String() string {
 		return ""
 	}
 	return s
+}
+
+func contains[E any](arr []E, f func(e E) bool) bool {
+	for _, e := range arr {
+		if found := f(e); found {
+			return true
+		}
+	}
+	return false
 }
