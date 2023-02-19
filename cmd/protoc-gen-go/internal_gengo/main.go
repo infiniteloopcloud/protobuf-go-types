@@ -602,9 +602,7 @@ func getAdditionalTags(m *messageInfo, field *protogen.Field) [][2]string {
 	if !contains(tags, func(kv [2]string) bool {
 		return kv[0] == "json"
 	}) {
-		return append([][2]string{
-			{"json", fieldJSONTagValue(field)},
-		}, tags...)
+		tags = append(tags, [2]string{"json", fieldJSONTagValue(field)})
 	}
 	return tags
 }
