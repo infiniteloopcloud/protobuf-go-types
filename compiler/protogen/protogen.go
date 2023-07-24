@@ -631,7 +631,6 @@ func newMessage(gen *Plugin, f *File, parent *Message, desc protoreflect.Message
 		"Unmarshal":           true,
 		"ExtensionRangeArray": true,
 		"ExtensionMap":        true,
-		"Descriptor":          true,
 	}
 	makeNameUnique := func(name string, hasGetter bool) string {
 		for usedNames[name] || (hasGetter && usedNames["Get"+name]) {
